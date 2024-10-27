@@ -297,6 +297,7 @@ if not st.session_state.logged_in:
             else:
                 st.error("Invalid username or password. Please try again.")
 else:
+    st.set_page_config(layout="wide")
     # If logged in, show the main app
     st.title("Bill Document Extractor")
 
