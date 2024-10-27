@@ -344,8 +344,7 @@ else:
 
             if file_path:
                 st.write(f"Processing document: {uploaded_file.name}")
-                # texts = process_document(file_path, file_type)
-                texts = input_text
+                texts = process_document(file_path, file_type)
 
                 if texts:
                     json_data = json.loads(output_columns)
@@ -353,9 +352,8 @@ else:
                     # Step 4: Generate summary
                     st.write(
                         f"Extracting data using {selected_model_text}...")
-                    # summary = extract_data(
-                    #     texts, selected_model, prompt, json_data)
-                    summary = input_summary
+                    summary = extract_data(
+                        texts, selected_model, prompt, json_data)
 
                     if summary:
                         generate_output_file(summary, json_data)
