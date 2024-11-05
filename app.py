@@ -1,10 +1,13 @@
 import os
 import json
-import boto3
 import pandas as pd
 from dotenv import load_dotenv
+
+import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+from openai import NotFoundError
 from langchain_community.document_loaders import AmazonTextractPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import StrOutputParser
@@ -14,6 +17,13 @@ import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_mistralai import ChatMistralAI
+
+import pytesseract
+from pdf2image import convert_from_path
+
+# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+poppler_path = r'poppler-24.08.0/Library/bin'
+# poppler_path = r'D:\inventiff\Bill Summary\poppler-24.08.0\Library\bin'
 
 # Part 1 (Setup)
 # Load environment variables (AWS credentials)
@@ -66,21 +76,24 @@ def upload_document(uploaded_file):
     return None
 
 
-# Function to process the document (Extract text using Textract and split it)
-def process_document(file_path, file_type):
+# Function to process the document (Extract text using text extractor)
+def process_document(extractor, file_path, file_type):
     """Extract text from the document (TIFF, PDF, JPG, JPEG) and split it into manageable chunks."""
 
     # Extract text from TIFF or image (JPG, JPEG)
     def extract_text_from_image(file_path):
         try:
-            with open(file_path, 'rb') as document:
-                response = textract.detect_document_text(
-                    Document={'Bytes': document.read()})
-
             text = ""
-            for item in response["Blocks"]:
-                if item["BlockType"] == "LINE":
-                    text += item["Text"] + "\n"
+            if extractor == "pytesseract":
+                with open(file_path, 'rb') as document:
+                    text = pytesseract.image_to_string(document)
+            else:
+                with open(file_path, 'rb') as document:
+                    response = textract.detect_document_text(
+                        Document={'Bytes': document.read()})
+                for item in response["Blocks"]:
+                    if item["BlockType"] == "LINE":
+                        text += item["Text"] + "\n"
             return text
         except ClientError as e:
             st.error(
@@ -90,13 +103,26 @@ def process_document(file_path, file_type):
             st.error(f"Error extracting text: {e}")
             return None
 
-    # Extract text from PDF using Textract's `analyze_document` API
+    # Extract text from PDF using text extractor
     def extract_text_from_pdf(file_path):
         try:
-            loader = AmazonTextractPDFLoader(file_path)
-            response = loader.load()
-            response = response[0].page_content
-            return response
+            if extractor == "pytesseract":
+                # Convert PDF to images (one image per page)
+                images = convert_from_path(
+                    file_path, poppler_path=poppler_path)
+                extracted_text = ""
+
+                # Perform OCR on each page image
+                for page_num, img in enumerate(images):
+                    print(f"Processing page {page_num + 1}")
+                    text = pytesseract.image_to_string(img)
+                    extracted_text += text + "\n"
+                return extracted_text
+            else:
+                loader = AmazonTextractPDFLoader(file_path)
+                response = loader.load()
+                response = response[0].page_content
+                return response
         except ClientError as e:
             st.error(
                 f"Amazon Textract error: {e.response['Error']['Message']}")
@@ -155,27 +181,23 @@ def extract_data(document_data, selected_model, input_prompt, json_data):
         return response
 
     def extract_all_data(pdf_data, json_template):
-        extracted_data = ""
-        iteration_count = 0
-        max_iterations = 3  # Set a limit for max attempts to avoid infinite loops
+        try:
+            extracted_data = ""
 
-        model_name = selected_model.get("model")
-        model = ""
-        if selected_model.get("name") == "OpenAI":
-            model = ChatOpenAI(model=model_name)
-        elif selected_model.get("name") == "Claude":
-            model = ChatAnthropic(
-                model=model_name, temperature=0, max_tokens=1024, timeout=None, max_retries=2)
-        elif selected_model.get("name") == "Self-Hosted LLM":
-            model_url = "https://expert-eft-innocent.ngrok-free.app/v1"
-            model = ChatOpenAI(model=model_name, base_url=model_url)
-        elif selected_model.get("name") == "Mistral":
-            model = ChatMistralAI(
-                model=model_name, temperature=0, max_retries=2)
-
-        while iteration_count < max_iterations:
-            iteration_count += 1
-            # print(f"LLM CALL COUNT: {iteration_count}")
+            model_name = selected_model.get("model")
+            model = ""
+            if selected_model.get("name") == "OpenAI":
+                model = ChatOpenAI(model=model_name, temperature=0.01)
+            elif selected_model.get("name") == "Claude":
+                model = ChatAnthropic(
+                    model=model_name, temperature=0.01, max_tokens=1024, timeout=None, max_retries=2)
+            elif selected_model.get("name") == "Self-Hosted LLM":
+                model_url = "https://expert-eft-innocent.ngrok-free.app/v1"
+                model = ChatOpenAI(
+                    model=model_name, base_url=model_url, temperature=0.01)
+            elif selected_model.get("name") == "Mistral":
+                model = ChatMistralAI(
+                    model=model_name, temperature=0.01, max_retries=2)
 
             # Call LLM with the full document but with processed data to help it continue
             response = get_llm_response(
@@ -185,27 +207,23 @@ def extract_data(document_data, selected_model, input_prompt, json_data):
                 processed_data=extracted_data  # Pass previously extracted data
             )
 
-            # If no new data is found, stop
-            if not response:
-                print("No new data found. Stopping extraction.")
-                break
-
-            # Append new response to extracted data
-            extracted_data += response
-
-        return extracted_data
+            return response
+        except NotFoundError as e:
+            st.error(f"NotFoundError: {str(e)}")
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
 
     # Usage example
     result = extract_all_data(pdf_data=document_data, json_template=json_data)
     return result
 
 
-# Function to generate Excel file from extracted data 
-def generate_output_file(result, json_data):
+# Function to generate Excel file from extracted data
+def generate_output_file(result):
     # Split the string into individual records
     records = result.split('\n\n')
 
-    # Convert each record into a dictionary
+   # Convert each record into a dictionary
     json_list = []
     for record in records:
         entry = {}
@@ -214,29 +232,33 @@ def generate_output_file(result, json_data):
             if '=' in line:
                 key, value = line.split('=', 1)
                 entry[key.strip()] = value.strip()
-        json_list.append(entry)
+
+        # Replace occurrences of "\"\"" with an empty string
+        entry = {k: (v if v != '\"\"' else '') for k, v in entry.items()}
+
+        # Only add non-empty entries to json_list
+        if entry:  # Check if the entry is not empty
+            json_list.append(entry)
 
     # Convert the list of dictionaries to JSON format
     json_output = json.dumps(json_list, indent=4)
 
     entries = json.loads(json_output)
 
-    # Remove duplicates and incomplete entries
-    unique_entries = []
-    seen_entries = set()
+    # Convert entries to a DataFrame
+    df = pd.DataFrame(entries)
 
-    required_keys = json_data  # Assuming json_data is a list of required keys
+    # Check if 'AMOUNT_CHARGED' column exists; if not, initialize it with a default value
+    if 'AMOUNT_CHARGED' not in df.columns:
+        df['AMOUNT_CHARGED'] = ""
 
-    for entry in entries:
-        # Check if all required keys are present
-        if all(key in entry for key in required_keys):
-            entry_tuple = tuple(entry.items())
-            if entry_tuple not in seen_entries:
-                seen_entries.add(entry_tuple)
-                unique_entries.append(entry)
-
-    # Create a DataFrame from unique entries
-    df = pd.DataFrame(unique_entries)
+    # Update 'AMOUNT_CHARGED' based on the specified logic
+    for column in ['INSURANCE_PAID', 'PLAINTIFF_PAID', 'INSURANCE_ADJUSTMENT']:
+        if column in df.columns:
+            df['AMOUNT_CHARGED'] = df.apply(
+                lambda row: "" if row['AMOUNT_CHARGED'] == row[column] else row['AMOUNT_CHARGED'],
+                axis=1
+            )
 
     # Display the DataFrame in Streamlit
     st.subheader("Extracted Billing Data")
@@ -305,7 +327,7 @@ else:
     prompt = st.text_area("Enter your custom prompt", value="")
 
     output_columns = st.text_area(
-        "Enter your JSON Object (required for Columns)", value="")
+        "Enter your JSON structure", value="")
 
     # Step 2: Upload the document
     uploaded_file = st.file_uploader(
@@ -313,6 +335,8 @@ else:
 
     # Model selection dropdown
     model_options = [
+        {"name": "Self-Hosted LLM",
+            "model": "gemma-2-9b-instruct", "status": "Free"},
         {"name": "Self-Hosted LLM",
             "model": "qwen2.5-coder-7b-instruct", "status": "Free"},
         {"name": "Mistral", "model": "open-mistral-nemo", "status": "Free"},
@@ -322,16 +346,31 @@ else:
         {"name": "Claude", "model": "claude-3-haiku-20240307", "status": "Paid"},
     ]
 
+    text_extractor_options = [
+        {"name": "Pytessaract", "extractor": "pytesseract", "status": "Free"},
+        {"name": "AWS Textractor", "extractor": "textractor", "status": "Paid"},
+    ]
+
     model_dropdown_options = [
         f"{option['name']} - ({option['model']}) - {option['status']}" for option in model_options
+    ]
+    text_extractor_dropdown_options = [
+        f"{option['name']} - {option['status']}" for option in text_extractor_options
     ]
 
     selected_model_text = st.selectbox(
         "Select a model to use", model_dropdown_options)
 
+    selected_text_extractor = st.selectbox(
+        "Select a Text Extractor to use", text_extractor_dropdown_options)
+
     # Find the selected model's dictionary from model_options
     selected_model = next(
         (model for model in model_options if f"{model['name']} - ({model['model']}) - {model['status']}" == selected_model_text), None)
+
+    # Find the selected model's dictionary from model_options
+    selected_extractor = next(
+        (extractor for extractor in text_extractor_options if f"{extractor['name']} - {extractor['status']}" == selected_text_extractor), None)
 
     # Submit button to trigger processing
     submit_button = st.button("Submit", disabled=(
@@ -345,7 +384,8 @@ else:
 
             if file_path:
                 st.write(f"Processing document: {uploaded_file.name}")
-                texts = process_document(file_path, file_type)
+                texts = process_document(
+                    selected_extractor["extractor"], file_path, file_type)
 
                 if texts:
                     json_data = json.loads(output_columns)
@@ -357,7 +397,7 @@ else:
                         texts, selected_model, prompt, json_data)
 
                     if summary:
-                        generate_output_file(summary, json_data)
+                        generate_output_file(summary)
                     else:
                         st.error("Failed to extract data from document.")
                 else:
