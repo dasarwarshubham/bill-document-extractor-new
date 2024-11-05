@@ -22,7 +22,6 @@ import pytesseract
 from pdf2image import convert_from_path
 
 # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-poppler_path = r'Personal/poppler-24.08.0/Library/bin'
 # poppler_path = r'D:\inventiff\Bill Summary\poppler-24.08.0\Library\bin'
 
 # Part 1 (Setup)
@@ -108,8 +107,9 @@ def process_document(extractor, file_path, file_type):
         try:
             if extractor == "pytesseract":
                 # Convert PDF to images (one image per page)
-                images = convert_from_path(
-                    file_path, poppler_path=poppler_path)
+                images = convert_from_path(file_path)
+                # images = convert_from_path(
+                #     file_path, poppler_path=poppler_path)
                 extracted_text = ""
 
                 # Perform OCR on each page image
