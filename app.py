@@ -22,7 +22,7 @@ import pytesseract
 from pdf2image import convert_from_path
 
 # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-poppler_path = r'poppler-24.08.0/Library/bin'
+poppler_path = r'Personal/poppler-24.08.0/Library/bin'
 # poppler_path = r'D:\inventiff\Bill Summary\poppler-24.08.0\Library\bin'
 
 # Part 1 (Setup)
