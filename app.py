@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 from dotenv import load_dotenv
+from PIL import Image
 
 import boto3
 from botocore.config import Config
@@ -84,8 +85,11 @@ def process_document(extractor, file_path, file_type):
         try:
             text = ""
             if extractor == "pytesseract":
-                with open(file_path, 'rb') as document:
-                    text = pytesseract.image_to_string(document)
+                with Image.open(file_path) as img:
+                    # Convert to 'RGB' or 'L' (grayscale) mode if necessary
+                    if img.mode not in ('RGB', 'L'):
+                        img = img.convert('RGB')
+                text = pytesseract.image_to_string(img)
             else:
                 with open(file_path, 'rb') as document:
                     response = textract.detect_document_text(
@@ -133,7 +137,7 @@ def process_document(extractor, file_path, file_type):
 
     # Process the file based on its type
     if file_path and file_type:
-        if file_type in ["jpg", "jpeg", "tiff"]:
+        if file_type in ["jpg", "jpeg", "tiff", "tif"]:
             extracted_text = extract_text_from_image(file_path)
         elif file_type == "pdf":
             extracted_text = extract_text_from_pdf(file_path)
@@ -386,6 +390,9 @@ else:
                 st.write(f"Processing document: {uploaded_file.name}")
                 texts = process_document(
                     selected_extractor["extractor"], file_path, file_type)
+
+                with st.expander(f"View text extracted using {selected_extractor['name']}"):
+                    st.write(texts)
 
                 if texts:
                     json_data = json.loads(output_columns)
