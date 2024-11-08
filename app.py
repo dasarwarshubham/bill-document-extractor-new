@@ -167,7 +167,7 @@ def process_document(extractor, file_path, file_type):
 
 
 # Function to extract data based on selected model
-def extract_data(document_data, selected_model, input_prompt, json_data):
+def extract_data(document_data, selected_model, input_prompt, json_data, max_llm_call_count):
     def get_llm_response(model, pdf_data, json_template, processed_data=""):
         prompt = PromptTemplate(
             template=input_prompt,
@@ -186,8 +186,6 @@ def extract_data(document_data, selected_model, input_prompt, json_data):
 
     def extract_all_data(pdf_data, json_template):
         try:
-            extracted_data = ""
-
             model_name = selected_model.get("model")
             model = ""
             if selected_model.get("name") == "OpenAI":
@@ -203,15 +201,33 @@ def extract_data(document_data, selected_model, input_prompt, json_data):
                 model = ChatMistralAI(
                     model=model_name, temperature=0.01, max_retries=2)
 
-            # Call LLM with the full document but with processed data to help it continue
-            response = get_llm_response(
-                model=model,
-                pdf_data=pdf_data,
-                json_template=json_template,
-                processed_data=extracted_data  # Pass previously extracted data
-            )
+            extracted_data = ""
+            iteration_count = 0
+            max_iterations = 1  # Set a limit for max attempts to avoid infinite loops
+            if max_llm_call_count:
+                max_iterations = max_llm_call_count
 
-            return response
+            while iteration_count < max_iterations:
+                iteration_count += 1
+                print(f"LLM CALL COUNT: {iteration_count}")
+
+                # Call LLM with the full document but with processed data to help it continue
+                response = get_llm_response(
+                    model=model,
+                    pdf_data=pdf_data,
+                    json_template=json_template,
+                    processed_data=extracted_data  # Pass previously extracted data
+                )
+
+                # If no new data is found, stop
+                if not response or "MEDICAL_SERVICE_PROVIDER" not in response:
+                    print("No new data found. Stopping extraction.")
+                    break
+
+                # Append new response to extracted data
+                extracted_data += response
+
+            return extracted_data
         except NotFoundError as e:
             st.error(f"NotFoundError: {str(e)}")
         except Exception as e:
@@ -368,6 +384,13 @@ else:
     selected_text_extractor = st.selectbox(
         "Select a Text Extractor to use", text_extractor_dropdown_options)
 
+    # Number of calls
+    llm_call_count = st.radio(
+        "Select the Number of LLM calls:",
+        options=[1, 2, 3],
+        index=0
+    )
+
     # Find the selected model's dictionary from model_options
     selected_model = next(
         (model for model in model_options if f"{model['name']} - ({model['model']}) - {model['status']}" == selected_model_text), None)
@@ -401,7 +424,7 @@ else:
                     st.write(
                         f"Extracting data using {selected_model_text}...")
                     summary = extract_data(
-                        texts, selected_model, prompt, json_data)
+                        texts, selected_model, prompt, json_data, llm_call_count)
 
                     if summary:
                         generate_output_file(summary)
