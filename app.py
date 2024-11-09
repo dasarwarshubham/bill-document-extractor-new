@@ -111,9 +111,10 @@ def process_document(extractor, file_path, file_type):
         try:
             if extractor == "pytesseract":
                 # Convert PDF to images (one image per page)
-                images = convert_from_path(file_path)
-                # images = convert_from_path(
-                #     file_path, poppler_path=poppler_path)
+                images = convert_from_path(
+                    file_path,
+                    # poppler_path=poppler_path
+                    )
                 extracted_text = ""
 
                 # Perform OCR on each page image
@@ -192,7 +193,7 @@ def extract_data(document_data, selected_model, input_prompt, json_data, max_llm
                 model = ChatOpenAI(model=model_name, temperature=0.01)
             elif selected_model.get("name") == "Claude":
                 model = ChatAnthropic(
-                    model=model_name, temperature=0.01, max_tokens=1024, timeout=None, max_retries=2)
+                    model=model_name, temperature=0.01, max_tokens=8192, timeout=None, max_retries=2)
             elif selected_model.get("name") == "Self-Hosted LLM":
                 model_url = "https://expert-eft-innocent.ngrok-free.app/v1"
                 model = ChatOpenAI(
@@ -362,6 +363,7 @@ else:
         {"name": "Mistral", "model": "open-mistral-nemo", "status": "Free"},
         {"name": "Mistral", "model": "mistral-small-latest", "status": "Paid"},
         {"name": "OpenAI", "model": "gpt-4o-mini", "status": "Paid"},
+        {"name": "Claude", "model": "claude-3-5-sonnet-20241022", "status": "Paid"},
         {"name": "Claude", "model": "claude-3-5-sonnet-20240620", "status": "Paid"},
         {"name": "Claude", "model": "claude-3-haiku-20240307", "status": "Paid"},
     ]
