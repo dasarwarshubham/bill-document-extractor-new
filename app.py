@@ -114,7 +114,7 @@ def process_document(extractor, file_path, file_type):
                 images = convert_from_path(
                     file_path,
                     # poppler_path=poppler_path
-                    )
+                )
                 extracted_text = ""
 
                 # Perform OCR on each page image
@@ -356,6 +356,8 @@ else:
 
     # Model selection dropdown
     model_options = [
+        {"name": "Self-Hosted LLM",
+            "model": "neuralmagic/gemma-2-9b-it-FP8", "status": "Free"},
         {"name": "Self-Hosted LLM",
             "model": "gemma-2-9b-instruct", "status": "Free"},
         {"name": "Self-Hosted LLM",
