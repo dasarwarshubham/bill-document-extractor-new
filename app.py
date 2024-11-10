@@ -290,7 +290,6 @@ def generate_output_file(result):
 
 
 st.set_page_config(layout="wide")
-# If logged in, show the main app
 st.title("Bill Document Extractor")
 
 # Step 1: Enter your prompt
@@ -325,10 +324,10 @@ text_extractor_options = [
 ]
 
 model_dropdown_options = [
-    f"{option['name']} - ({option['model']}) - {option['status']}" for option in model_options
+    f"{option['name']} - ({option['model']})" for option in model_options
 ]
 text_extractor_dropdown_options = [
-    f"{option['name']} - {option['status']}" for option in text_extractor_options
+    f"{option['name']}" for option in text_extractor_options
 ]
 
 selected_model_text = st.selectbox(
