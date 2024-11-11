@@ -285,7 +285,7 @@ def generate_output_file(result):
         label="Download Excel File",
         data=open(output_file, 'rb').read(),
         file_name=output_file,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -293,10 +293,10 @@ st.set_page_config(layout="wide")
 st.title("Bill Document Extractor")
 
 # Step 1: Enter your prompt
-prompt = st.text_area("Enter your custom prompt", value="")
+prompt = st.text_area("Enter your custom prompt", value="", height=300)
 
 output_columns = st.text_area(
-    "Enter your JSON structure", value="")
+    "Enter your JSON structure", value="", height=150)
 
 # Step 2: Upload the document
 uploaded_file = st.file_uploader(
@@ -338,15 +338,16 @@ selected_text_extractor = st.selectbox(
 
 # Find the selected model's dictionary from model_options
 selected_model = next(
-    (model for model in model_options if f"{model['name']} - ({model['model']}) - {model['status']}" == selected_model_text), None)
+    (model for model in model_options if f"{model['name']} - ({model['model']})" == selected_model_text), None)
 
 # Find the selected model's dictionary from model_options
 selected_extractor = next(
-    (extractor for extractor in text_extractor_options if f"{extractor['name']} - {extractor['status']}" == selected_text_extractor), None)
+    (extractor for extractor in text_extractor_options if f"{extractor['name']}" == selected_text_extractor), None)
 
 # Submit button to trigger processing
 submit_button = st.button("Submit", disabled=(
-    uploaded_file is None or selected_model is None))
+    uploaded_file is None or selected_model is None or prompt == "" or
+    output_columns == ""))
 
 if submit_button:
     if uploaded_file is not None and selected_model is not None:
@@ -358,9 +359,7 @@ if submit_button:
             st.write(f"Processing document: {uploaded_file.name}")
             texts = process_document(
                 selected_extractor["extractor"], file_path, file_type)
-
-            with st.expander(f"View text extracted using {selected_extractor['name']}"):
-                st.write(texts)
+            st.session_state['extracted_text'] = texts
 
             if texts:
                 json_data = json.loads(output_columns)
@@ -372,7 +371,9 @@ if submit_button:
                     texts, selected_model, prompt, json_data)
 
                 if summary:
-                    generate_output_file(summary)
+                    # Store extracted summary data in session state
+                    st.session_state['summary'] = summary
+                    st.session_state['generated'] = True
                 else:
                     st.error("Failed to extract data from document.")
             else:
@@ -380,5 +381,12 @@ if submit_button:
     else:
         st.warning(
             "Please upload a document and select a model before submitting.")
-else:
-    st.info("Please upload a document to proceed.")
+
+
+if st.session_state.get('extracted_text', False):
+    with st.expander(f"View text extracted using {selected_extractor['name']}"):
+        st.write(st.session_state['extracted_text'])
+
+# Check if the summary was generated and display data
+if st.session_state.get('generated', False):
+    generate_output_file(st.session_state['summary'])
